@@ -2473,7 +2473,7 @@ static int print_advertising_devices(int dd, uint8_t filter_type)
                     if(strncmp("00:0B:BB:00:BB:BB",addr,strlen("00:0B:BB:00:BB:BB"))==0)
                     {
                          printf("%s %s %u\n", addr, name,time(NULL));
-                            u_int8_t index=0;
+                            u_int8_t index=0; // add a checksum here
                             for(index=0;index < info->length;index++)
                             {
                                 printf("%02X",info->data[index]);
