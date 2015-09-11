@@ -236,6 +236,7 @@ src/agent.h
 src/attio.h
 src/attrib-server.c
 src/attrib-server.h
+src/builtin.h
 src/dbus-common.c
 src/dbus-common.h
 src/device.c
@@ -341,3 +342,4 @@ tools/sdptool.c
 tools/ubcsp.c
 tools/ubcsp.h
 unit/test-eir.c
+config.h
