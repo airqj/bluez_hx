@@ -1,0 +1,72 @@
+#include <stdio.h>
+#include <errno.h>
+#include <ctype.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <string.h>
+#include <getopt.h>
+#include <sys/param.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+
+#include <bluetooth/bluetooth.h>
+#include <bluetooth/hci.h>
+#include <bluetooth/hci_lib.h>
+
+#include "textfile.h"
+#include "csr.h"
+
+void cmd_le_adv(int ctl, int hdev)
+{
+   struct hci_request rq;
+   le_set_advertise_enable_cp advertise_cp;
+   uint8_t status;
+   int dd, ret;
+
+   if (hdev < 0)
+       hdev = hci_get_route(NULL);
+
+   dd = hci_open_dev(hdev);
+   if (dd < 0) {
+       perror("Could not open device");
+       exit(1);
+   }
+
+   memset(&advertise_cp, 0, sizeof(advertise_cp));
+/*
+   if (strcmp(opt, "noleadv") == 0)
+       advertise_cp.enable = 0x00;
+   else
+*/
+   advertise_cp.enable = 0x01;
+
+   memset(&rq, 0, sizeof(rq));
+   rq.ogf = OGF_LE_CTL;
+   rq.ocf = OCF_LE_SET_ADVERTISE_ENABLE;
+   rq.cparam = &advertise_cp;
+   rq.clen = LE_SET_ADVERTISE_ENABLE_CP_SIZE;
+   rq.rparam = &status;
+   rq.rlen = 1;
+
+   ret = hci_send_req(dd, &rq, 1000);
+
+   hci_close_dev(dd);
+
+   if (ret < 0) {
+       fprintf(stderr, "Can't set advertise mode on hci%d: %s (%d)\n",
+                       hdev, strerror(errno), errno);
+       exit(1);
+   }
+
+   if (status) {
+       fprintf(stderr, "LE set advertise enable on hci%d returned status %d\n",
+                       hdev, status);
+       exit(1);
+   }
+}
+
+int main(int argc,char **argv)
+{
+    cmd_le_adv(0,-1);
+    return 0;
+}
