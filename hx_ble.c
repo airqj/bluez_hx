@@ -20,6 +20,25 @@
 #define STOP_ADV 0x00
 #define START_ADV 0x01
 
+/* Unofficial value, might still change */
+#define LE_LINK		0x03
+
+#define FLAGS_AD_TYPE 0x01
+#define FLAGS_LIMITED_MODE_BIT 0x01
+#define FLAGS_GENERAL_MODE_BIT 0x02
+
+#define EIR_FLAGS                   0x01  /* flags */
+#define EIR_UUID16_SOME             0x02  /* 16-bit UUID, more available */
+#define EIR_UUID16_ALL              0x03  /* 16-bit UUID, all listed */
+#define EIR_UUID32_SOME             0x04  /* 32-bit UUID, more available */
+#define EIR_UUID32_ALL              0x05  /* 32-bit UUID, all listed */
+#define EIR_UUID128_SOME            0x06  /* 128-bit UUID, more available */
+#define EIR_UUID128_ALL             0x07  /* 128-bit UUID, all listed */
+#define EIR_NAME_SHORT              0x08  /* shortened local name */
+#define EIR_NAME_COMPLETE           0x09  /* complete local name */
+#define EIR_TX_POWER                0x0A  /* transmit power level */
+#define EIR_DEVICE_ID               0x10  /* device ID */
+
 #define KEY "abcdef"
 
 typedef struct _MYDATA {
@@ -126,6 +145,66 @@ void stop_le_adv(int ctl,int hdev)
                            hdev, status);
         exit(1);
     }
+}
+
+int read_flags(uint8_t *flags, const uint8_t *data, size_t size)
+{
+    size_t offset;
+
+    if (!flags || !data)
+        return -EINVAL;
+
+    offset = 0;
+    while (offset < size) {
+        uint8_t len = data[offset];
+        uint8_t type;
+
+        /* Check if it is the end of the significant part */
+        if (len == 0)
+            break;
+
+        if (len + offset > size)
+            break;
+
+        type = data[offset + 1];
+
+        if (type == FLAGS_AD_TYPE) {
+            *flags = data[offset + 2];
+            return 0;
+        }
+
+        offset += 1 + len;
+    }
+
+    return -ENOENT;
+}
+
+int check_report_filter(uint8_t procedure, le_advertising_info *info)
+{
+   uint8_t flags;
+
+   /* If no discovery procedure is set, all reports are treat as valid */
+   if (procedure == 0)
+       return 1;
+
+   /* Read flags AD type value from the advertising report if it exists */
+   if (read_flags(&flags, info->data, info->length))
+       return 0;
+
+   switch (procedure) {
+   case 'l': /* Limited Discovery Procedure */
+       if (flags & FLAGS_LIMITED_MODE_BIT)
+           return 1;
+       break;
+   case 'g': /* General Discovery Procedure */
+       if (flags & (FLAGS_LIMITED_MODE_BIT | FLAGS_GENERAL_MODE_BIT))
+           return 1;
+       break;
+   default:
+       fprintf(stderr, "Unknown discovery procedure\n");
+   }
+
+   return 0;
 }
 
 int print_advertising_devices(int dd, uint8_t filter_type)
@@ -269,10 +348,103 @@ void lescan(int dev_id, int argc, char **argv)
     hci_close_dev(dd);
 }
 
+ void hex_dump(char *pref, int width, unsigned char *buf, int len)
+{
+    register int i,n;
+
+    for (i = 0, n = 1; i < len; i++, n++) {
+        if (n == 1)
+            printf("%s", pref);
+        printf("%2.2X ", buf[i]);
+        if (n == width) {
+            printf("\n");
+            n = 0;
+        }
+    }
+    if (i && n!=1)
+        printf("\n");
+}
+
+//void cmd_cmd(int dev_id, int argc, char **argv)
+void cmd_cmd(int dev_id,uint8_t *cmd_data ,uint8_t cmd_len)
+{
+    unsigned char buf[HCI_MAX_EVENT_SIZE], *ptr = buf;
+    struct hci_filter flt;
+    hci_event_hdr *hdr;
+    int i, opt, len, dd;
+    uint16_t ocf;
+    uint8_t ogf;
+
+/*
+    for_each_opt(opt, cmd_options, NULL) {
+        switch (opt) {
+        default:
+            printf("%s", cmd_help);
+            return;
+        }
+    }
+    helper_arg(2, -1, &argc, &argv, cmd_help);
+*/
+    if (dev_id < 0)
+        dev_id = hci_get_route(NULL);
+
+    errno = 0;
+/*
+    ogf = strtol(argv[0], NULL, 16);
+    ocf = strtol(argv[1], NULL, 16);
+*/
+    ogf = 0x08;
+    ocf = 0x0008;
+    if (errno == ERANGE || (ogf > 0x3f) || (ocf > 0x3ff)) {
+        printf("something error\n");
+        return;
+    }
+/*
+    for (i = 2, len = 0; i < argc && len < (int) sizeof(buf); i++, len++)
+        *ptr++ = (uint8_t) strtol(argv[i], NULL, 16);
+*/
+    dd = hci_open_dev(dev_id);
+    if (dd < 0) {
+        perror("Device open failed");
+        exit(EXIT_FAILURE);
+    }
+
+    /* Setup filter */
+    hci_filter_clear(&flt);
+    hci_filter_set_ptype(HCI_EVENT_PKT, &flt);
+    hci_filter_all_events(&flt);
+    if (setsockopt(dd, SOL_HCI, HCI_FILTER, &flt, sizeof(flt)) < 0) {
+        perror("HCI filter setup failed");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("< HCI Command: ogf 0x%02x, ocf 0x%04x, plen %d\n", ogf, ocf,cmd_len);
+    hex_dump("  ", 20,cmd_data,cmd_len); fflush(stdout);
+
+//    if (hci_send_cmd(dd, ogf, ocf, len, buf) < 0) {
+    if (hci_send_cmd(dd, ogf, ocf,32, cmd_data) < 0) {
+        perror("Send failed");
+        exit(EXIT_FAILURE);
+    }
+
+    len = read(dd, buf, sizeof(buf));
+    if (len < 0) {
+        perror("Read failed");
+        exit(EXIT_FAILURE);
+    }
+
+    hdr = (void *)(buf + 1);
+    ptr = buf + (1 + HCI_EVENT_HDR_SIZE);
+    len -= (1 + HCI_EVENT_HDR_SIZE);
+
+    printf("> HCI Event: 0x%02x plen %d\n", hdr->evt, hdr->plen);
+    hex_dump("  ", 20, ptr, len); fflush(stdout);
+
+    hci_close_dev(dd);
+}
 
 int main(int argc,char **argv)
 {
-    uint8_t cmd_data[32]= {0x1F,0x1F,0x01,0x1A,0x1A,0xFF,0x4C,0x00,0x02,0x15,0xFD,0xA5,0x06,0x93,0xA4,0xE2,0x4F,0xB1,0xAF,0xCF,0xC6,0xEB,0x07,0x64,0x78,0x25,0x27,0x19,0x34,0x64,0xC9,0x00};
 /*
     start_le_adv(0,-1);
     printf("le_adv started successful\n");
@@ -287,7 +459,26 @@ int main(int argc,char **argv)
     }
 
     int dd = hci_open_dev(dev_id);
-    hci_send_cmd(dd,0x08,0x0008,sizeof(cmd_data),cmd_data);
+/*
+    int result = hci_send_cmd(dd,0x08,0x0008,32,cmd_data);
+    printf("result is %d\n",result);
 
+    uint8_t event[100];
+    uint8_t len=0;
+    if((len = read(dd,event,sizeof(event))) < 0)
+    {
+        printf("read() error\n");
+        return 2;
+    }
+
+    uint8_t temp=0;
+    for(temp=0;temp<len;temp++)
+    {
+        printf("%02X",event[temp]);
+    }
+*/
+    uint8_t cmd_data[32]= {0x1F,0x1F,0x01,0x1A,0x1A,0xFF,0x4C,0x00,0x02,0x15,0xFD,0xA5,0x06,0x93,0xA4,0xE2,0x4F,0xB1,0xAF,0xCF,0xC6,0xEB,0x07,0x64,0x78,0x25,0x27,0x19,0x34,0x64,0xC9,0x0a};
+    cmd_cmd(dev_id,cmd_data,sizeof(cmd_data));
+    printf("\n");
     return 0;
 }
