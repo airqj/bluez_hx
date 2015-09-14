@@ -44,6 +44,8 @@
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 
+#include "../sha1.h"
+#define KEY "ABCDEF"
 #include "textfile.h"
 #include "oui.h"
 
@@ -2407,9 +2409,17 @@ failed:
 	snprintf(buf, buf_len, "(unknown)");
 }
 
+typedef struct _MYDATA {
+    uint8_t length;
+    uint16_t magic_number;
+    uint8_t device_id[8];
+    uint8_t checksum[20];
+}__attribute__((packed)) MYDATA;
+
 static int print_advertising_devices(int dd, uint8_t filter_type)
 {
 	unsigned char buf[HCI_MAX_EVENT_SIZE], *ptr;
+    MYDATA *mydata=NULL;
 	struct hci_filter nf, of;
 	struct sigaction sa;
 	socklen_t olen;
@@ -2425,6 +2435,7 @@ static int print_advertising_devices(int dd, uint8_t filter_type)
 	hci_filter_set_ptype(HCI_EVENT_PKT, &nf);
 	hci_filter_set_event(EVT_LE_META_EVENT, &nf);
 
+
 	if (setsockopt(dd, SOL_HCI, HCI_FILTER, &nf, sizeof(nf)) < 0) {
 		printf("Could not set socket options\n");
 		return -1;
@@ -2438,6 +2449,7 @@ static int print_advertising_devices(int dd, uint8_t filter_type)
 	while (1) {
 		evt_le_meta_event *meta;
 		le_advertising_info *info;
+
 		char addr[18];
 
 		while ((len = read(dd, buf, sizeof(buf))) < 0) {
@@ -2469,8 +2481,17 @@ static int print_advertising_devices(int dd, uint8_t filter_type)
 			ba2str(&info->bdaddr, addr);
 			eir_parse_name(info->data, info->length,
 							name, sizeof(name) - 1);
+/*
+            mydata = (MYDATA *)(info->data);
+            uint8_t digest[20];
+            sha1_hmac(KEY,strlen(KEY),mydata->device_id,8,digest);
+            if(memcmp(digest,mydata->checksum,sizeof(digest)) == 0)
+            {
+                printf("device: %llu is a valid device\n",mydata->device_id);
+            }
+*/
 
-                    if(strncmp("00:0B:BB:00:BB:BB",addr,strlen("00:0B:BB:00:BB:BB"))==0)
+                    if(strncmp("00:02:5B:00:A5:A5",addr,strlen("00:02:5B:00:A5:A5"))==0)
                     {
                          printf("%s %s %u\n", addr, name,time(NULL));
                             u_int8_t index=0;
@@ -2480,6 +2501,7 @@ static int print_advertising_devices(int dd, uint8_t filter_type)
                             }
                             printf("\n");
                     }
+
 		}
 	}
 
