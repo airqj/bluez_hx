@@ -366,7 +366,7 @@ void lescan(int dev_id, int argc, char **argv)
 }
 
 //void cmd_cmd(int dev_id, int argc, char **argv)
-void cmd_cmd(int dev_id,uint8_t *cmd_data ,uint8_t cmd_len)
+void set_adv_data(int dev_id,uint8_t *cmd_data ,uint8_t cmd_len)
 {
     unsigned char buf[HCI_MAX_EVENT_SIZE], *ptr = buf;
     struct hci_filter flt;
@@ -478,7 +478,7 @@ int main(int argc,char **argv)
     }
 */
     uint8_t cmd_data[32]= {0x1F,0x1F,0x01,0x1A,0x1A,0xFF,0x4C,0x00,0x02,0x15,0xFD,0xA5,0x06,0x93,0xA4,0xE2,0x4F,0xB1,0xAF,0xCF,0xC6,0xEB,0x07,0x64,0x78,0x25,0x27,0x19,0x34,0x64,0xC9,0x0a};
-    cmd_cmd(dev_id,cmd_data,sizeof(cmd_data));
+    set_adv_data(dev_id,cmd_data,sizeof(cmd_data));
     printf("\n");
     return 0;
 }
