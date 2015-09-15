@@ -59,4 +59,4 @@ void start_le_adv(int ctl,int hdev);
 void stop_le_adv(int ctl,int hdev);
 //int print_advertising_devices(int dd,uint8_t filter_type);
 void lescan(int dev_id,uint8_t scan_flag);
-void set_adv_data(int dev_id,uint8_t *cmd_data,uint8_t cmd_len);
+void set_adv_data(int dd,uint8_t *cmd_data,uint8_t cmd_len);

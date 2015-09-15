@@ -298,7 +298,7 @@ int print_advertising_devices(int dd, uint8_t filter_type,uint8_t scan_flag)
                         to_peripheral.magic_number = MAGIC_NUMBER_CENTRAL_TO_PERIPHERAL;
                         memcpy(cmd_data+1,(uint8_t *)&to_peripheral,sizeof(MYDATA));
 
-                        set_adv_data(dev_id,cmd_data,sizeof(cmd_data));
+                        set_adv_data(dd,cmd_data,sizeof(cmd_data));
                         start_le_adv(-1,0);
                         sleep(10);
                         stop_le_adv(-1,0);
@@ -394,12 +394,12 @@ void lescan(int dev_id,uint8_t scan_flag)
 }
 
 //void cmd_cmd(int dev_id, int argc, char **argv)
-void set_adv_data(int dev_id,uint8_t *cmd_data ,uint8_t cmd_len)
+void set_adv_data(int dd,uint8_t *cmd_data ,uint8_t cmd_len)
 {
     unsigned char buf[HCI_MAX_EVENT_SIZE], *ptr = buf;
     struct hci_filter flt;
     hci_event_hdr *hdr;
-    int i, opt, len, dd;
+    int i, opt, len;
     uint16_t ocf;
     uint8_t ogf;
 
@@ -413,9 +413,11 @@ void set_adv_data(int dev_id,uint8_t *cmd_data ,uint8_t cmd_len)
     }
     helper_arg(2, -1, &argc, &argv, cmd_help);
 */
+/*
     if (dev_id < 0)
         dev_id = hci_get_route(NULL);
 
+*/
     errno = 0;
 /*
     ogf = strtol(argv[0], NULL, 16);
@@ -431,12 +433,13 @@ void set_adv_data(int dev_id,uint8_t *cmd_data ,uint8_t cmd_len)
     for (i = 2, len = 0; i < argc && len < (int) sizeof(buf); i++, len++)
         *ptr++ = (uint8_t) strtol(argv[i], NULL, 16);
 */
+/*
     dd = hci_open_dev(dev_id);
     if (dd < 0) {
         perror("Device open failed");
         exit(EXIT_FAILURE);
     }
-
+*/
     /* Setup filter */
     hci_filter_clear(&flt);
     hci_filter_set_ptype(HCI_EVENT_PKT, &flt);
