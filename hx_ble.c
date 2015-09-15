@@ -7,11 +7,13 @@
 #include <getopt.h>
 #include <sys/param.h>
 #include <sys/ioctl.h>
+/*
 #include <sys/socket.h>
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
+#include <signal.h>
 
 #include "textfile.h"
 #include "csr.h"
@@ -21,24 +23,25 @@
 #define START_ADV 0x01
 
 /* Unofficial value, might still change */
-#define LE_LINK		0x03
 
-#define FLAGS_AD_TYPE 0x01
-#define FLAGS_LIMITED_MODE_BIT 0x01
-#define FLAGS_GENERAL_MODE_BIT 0x02
+//#define LE_LINK		0x03
 
-#define EIR_FLAGS                   0x01  /* flags */
-#define EIR_UUID16_SOME             0x02  /* 16-bit UUID, more available */
-#define EIR_UUID16_ALL              0x03  /* 16-bit UUID, all listed */
-#define EIR_UUID32_SOME             0x04  /* 32-bit UUID, more available */
-#define EIR_UUID32_ALL              0x05  /* 32-bit UUID, all listed */
-#define EIR_UUID128_SOME            0x06  /* 128-bit UUID, more available */
-#define EIR_UUID128_ALL             0x07  /* 128-bit UUID, all listed */
-#define EIR_NAME_SHORT              0x08  /* shortened local name */
-#define EIR_NAME_COMPLETE           0x09  /* complete local name */
-#define EIR_TX_POWER                0x0A  /* transmit power level */
-#define EIR_DEVICE_ID               0x10  /* device ID */
+//#define FLAGS_AD_TYPE 0x01
+//#define FLAGS_LIMITED_MODE_BIT 0x01
+//#define FLAGS_GENERAL_MODE_BIT 0x02
 
+//#define EIR_FLAGS                   0x01  /* flags */
+//#define EIR_UUID16_SOME             0x02  /* 16-bit UUID, more available */
+//#define EIR_UUID16_ALL              0x03  /* 16-bit UUID, all listed */
+//#define EIR_UUID32_SOME             0x04  /* 32-bit UUID, more available */
+//#define EIR_UUID32_ALL              0x05  /* 32-bit UUID, all listed */
+//#define EIR_UUID128_SOME            0x06  /* 128-bit UUID, more available */
+//#define EIR_UUID128_ALL             0x07  /* 128-bit UUID, all listed */
+//#define EIR_NAME_SHORT              0x08  /* shortened local name */
+//#define EIR_NAME_COMPLETE           0x09  /* complete local name */
+//#define EIR_TX_POWER                0x0A  /* transmit power level */
+//#define EIR_DEVICE_ID               0x10  /* device ID */
+/*
 #define KEY "abcdef"
 
 typedef struct _MYDATA {
@@ -47,6 +50,10 @@ typedef struct _MYDATA {
     uint64_t device_id;
     uint8_t checksum[20];
 }__attribute__((packed)) MYDATA;
+
+*/
+
+#include "hx_ble.h"
 
 static volatile int signal_received = 0;
 void sigint_handler(int sig)
@@ -207,7 +214,7 @@ int check_report_filter(uint8_t procedure, le_advertising_info *info)
    return 0;
 }
 
-int print_advertising_devices(int dd, uint8_t filter_type)
+int print_advertising_devices(int dd, uint8_t filter_type,uint8_t scan_flag)
 {
     unsigned char buf[HCI_MAX_EVENT_SIZE], *ptr;
     MYDATA *mydata=NULL;
@@ -266,25 +273,47 @@ int print_advertising_devices(int dd, uint8_t filter_type)
         info = (le_advertising_info *) (meta->data + 1);
         if (check_report_filter(filter_type, info)) {
             mydata = (MYDATA *)(info->data);
-            uint8_t digest[20];
-            sha1_hmac(KEY,strlen(KEY),mydata->device_id,8,digest);
-            if(memcmp(digest,mydata->checksum,sizeof(digest)) == 0)
-            {
-                printf("device: %llu is a valid device\n",mydata->device_id);
-            }
 
-/*
-                    if(strncmp("00:02:5B:00:A5:A5",addr,strlen("00:02:5B:00:A5:A5"))==0)
+            if(scan_flag == CENTRAL)
+            {
+                //for PERIPHERAL_TO_CENTRAL,central need to reply peripheral
+                if(htons(mydata->magic_number) == MAGIC_NUMBER_PERIPHERAL_TO_CENTRAL)
+                {
+                    uint8_t digest[20];
+                    uint8_t cmd_data[32]= {0x1F};
+                    uint64_t device_id = (mydata->device_id);
+                    sha1_hmac(KEY,strlen(KEY),(unsigned char *)&device_id,8,digest);
+
+                    int dev_id = hci_get_route(NULL);
+                    if(dev_id < 0)
                     {
-                         printf("%s %s %u\n", addr, name,time(NULL));
-                            u_int8_t index=0;
-                            for(index=0;index < info->length;index++)
-                            {
-                                printf("%02X",info->data[index]);
-                            }
-                            printf("\n");
+                        printf("%s hci_get_route error\n",__FILE__);
                     }
-*/
+                    if(0 == memcmp(digest,mydata->checksum,sizeof(digest)))
+                    {
+                        printf("check sum Ok\n");
+                        MYDATA to_peripheral;
+                        to_peripheral.device_id = mydata->device_id;
+                        to_peripheral.length = 0x1E;
+                        to_peripheral.magic_number = MAGIC_NUMBER_CENTRAL_TO_PERIPHERAL;
+                        memcpy(cmd_data+1,(uint8_t *)&to_peripheral,sizeof(MYDATA));
+
+                        set_adv_data(dev_id,cmd_data,sizeof(cmd_data));
+                        start_le_adv(-1,0);
+                        sleep(10);
+                        stop_le_adv(-1,0);
+                    }
+                }
+            }
+            else if(scan_flag == PERIPHERAL)//for scan_flag == PERIPHERAL
+            {
+                printf("magic_number is %u\n",htons(mydata->magic_number));
+                if(htons(mydata->magic_number == MAGIC_NUMBER_CENTRAL_TO_PERIPHERAL))
+                {
+                    printf("stop_le_adv()\n");
+                    stop_le_adv(-1,0);
+                }
+            }
         }
     }
 
@@ -297,7 +326,8 @@ done:
     return 0;
 }
 
-void lescan(int dev_id, int argc, char **argv)
+//void lescan(int dev_id, int argc, char **argv)
+void lescan(int dev_id,uint8_t scan_flag)
 {
     int err, opt, dd;
     uint8_t own_type = 0x00;
@@ -307,8 +337,6 @@ void lescan(int dev_id, int argc, char **argv)
     uint16_t window = htobs(0x0010);
     uint8_t filter_dup = 1;
 
-    printf("%d\n",argc);
-    printf("%s\n",argv[0]);
     if (dev_id < 0)
         dev_id = hci_get_route(NULL);
 
@@ -333,7 +361,7 @@ void lescan(int dev_id, int argc, char **argv)
 
     printf("LE Scan ...\n");
 
-    err = print_advertising_devices(dd, filter_type);
+    err = print_advertising_devices(dd, filter_type,scan_flag);
     if (err < 0) {
         perror("Could not receive advertising events");
         exit(1);
@@ -441,44 +469,4 @@ void set_adv_data(int dev_id,uint8_t *cmd_data ,uint8_t cmd_len)
     hex_dump("  ", 20, ptr, len); fflush(stdout);
 
     hci_close_dev(dd);
-}
-
-int main(int argc,char **argv)
-{
-/*
-    start_le_adv(0,-1);
-    printf("le_adv started successful\n");
-    printf("now try to stop adv\n");
-    stop_le_adv(0,-1);
-*/
-    int dev_id = hci_get_route(NULL);
-    if(dev_id < 0)
-    {
-        printf("hci_get_route faild\n");
-        return 1;
-    }
-
-    int dd = hci_open_dev(dev_id);
-/*
-    int result = hci_send_cmd(dd,0x08,0x0008,32,cmd_data);
-    printf("result is %d\n",result);
-
-    uint8_t event[100];
-    uint8_t len=0;
-    if((len = read(dd,event,sizeof(event))) < 0)
-    {
-        printf("read() error\n");
-        return 2;
-    }
-
-    uint8_t temp=0;
-    for(temp=0;temp<len;temp++)
-    {
-        printf("%02X",event[temp]);
-    }
-*/
-    uint8_t cmd_data[32]= {0x1F,0x1F,0x01,0x1A,0x1A,0xFF,0x4C,0x00,0x02,0x15,0xFD,0xA5,0x06,0x93,0xA4,0xE2,0x4F,0xB1,0xAF,0xCF,0xC6,0xEB,0x07,0x64,0x78,0x25,0x27,0x19,0x34,0x64,0xC9,0x0a};
-    set_adv_data(dev_id,cmd_data,sizeof(cmd_data));
-    printf("\n");
-    return 0;
 }
