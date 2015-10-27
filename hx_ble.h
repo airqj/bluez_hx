@@ -47,13 +47,24 @@
 
 #define CENTRAL 0x01
 #define PERIPHERAL 0x02
+#define INDICATOR_HX_REPORT 0x2719
 
+/*
 typedef struct _MYDATA {
     uint8_t length;
     uint16_t magic_number;
     uint64_t device_id;
     uint8_t checksum[20];
 }__attribute__((packed)) MYDATA;
+*/
+
+typedef struct _HX_REPORT {
+    uint16_t indicator;
+    uint8_t  length;
+    uint64_t data;
+    uint8_t  checksum[20];
+}__attribute__((packed)) HX_REPORT;
+
 
 void start_le_adv(int ctl,int hdev);
 void stop_le_adv(int ctl,int hdev);

@@ -217,7 +217,7 @@ int check_report_filter(uint8_t procedure, le_advertising_info *info)
 int print_advertising_devices(int dd, uint8_t filter_type,uint8_t scan_flag)
 {
     unsigned char buf[HCI_MAX_EVENT_SIZE], *ptr;
-    MYDATA *mydata=NULL;
+    HX_REPORT *hx_report=NULL;
     struct hci_filter nf, of;
     struct sigaction sa;
     socklen_t olen;
@@ -272,8 +272,22 @@ int print_advertising_devices(int dd, uint8_t filter_type,uint8_t scan_flag)
         /* Ignoring multiple reports */
         info = (le_advertising_info *) (meta->data + 1);
         if (check_report_filter(filter_type, info)) {
-            mydata = (MYDATA *)(info->data);
-
+  //          mydata = (MYDATA *)(info->data);
+            hx_report = (HX_REPORT *)(info->data);
+            if(hx_report->indicator == INDICATOR_HX_REPORT)
+            {
+                uint8_t digest[20];
+                sha1_hmac(KEY,strlen(KEY),(uint8_t *)hx_report->data,8,digest);
+                if(memcmp(digest,hx_report->checksum,sizeof(digest)) == 0)
+                {
+                    printf("found a hx report\n");
+                }
+            }
+            else
+            {
+                printf("found BLE package\n");
+            }
+/*
             if(scan_flag == CENTRAL)
             {
                 //for PERIPHERAL_TO_CENTRAL,central need to reply peripheral
@@ -305,6 +319,7 @@ int print_advertising_devices(int dd, uint8_t filter_type,uint8_t scan_flag)
                     }
                 }
             }
+
             else if(scan_flag == PERIPHERAL)//for scan_flag == PERIPHERAL
             {
                 printf("magic_number is %u\n",htons(mydata->magic_number));
@@ -314,6 +329,7 @@ int print_advertising_devices(int dd, uint8_t filter_type,uint8_t scan_flag)
                     stop_le_adv(-1,0);
                 }
             }
+*/
         }
     }
 
