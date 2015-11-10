@@ -48,6 +48,7 @@
 #define CENTRAL 0x01
 #define PERIPHERAL 0x02
 #define INDICATOR_HX_REPORT 0x2719
+#define CHECKSUM_LENGTH 20
 
 /*
 typedef struct _MYDATA {
@@ -65,6 +66,12 @@ typedef struct _HX_REPORT {
     uint8_t  checksum[20];
 }__attribute__((packed)) HX_REPORT;
 
+/*
+typedef struct _USER_FLAG {
+    uint64_t hx_id;
+    timer_t  timestamp;
+} __attribute__((packed)) USER_FLAG;
+*/
 
 void start_le_adv(int ctl,int hdev);
 void stop_le_adv(int ctl,int hdev);

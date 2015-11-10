@@ -54,6 +54,7 @@ typedef struct _MYDATA {
 */
 
 #include "hx_ble.h"
+#include "user.h"
 
 static volatile int signal_received = 0;
 void sigint_handler(int sig)
@@ -223,6 +224,9 @@ int print_advertising_devices(int dd, uint8_t filter_type,uint8_t scan_flag)
     socklen_t olen;
     int len;
 
+    init_timer();
+    printf("%llu\n",htobe64(get_routerId()));
+
     olen = sizeof(of);
     if (getsockopt(dd, SOL_HCI, HCI_FILTER, &of, &olen) < 0) {
         printf("Could not get socket options\n");
@@ -243,6 +247,13 @@ int print_advertising_devices(int dd, uint8_t filter_type,uint8_t scan_flag)
     sa.sa_flags = SA_NOCLDSTOP;
     sa.sa_handler = sigint_handler;
     sigaction(SIGINT, &sa, NULL);
+
+    uint8_t first=1;
+    HX_REPORT hx_test;
+    hx_test.indicator=INDICATOR_HX_REPORT;
+    hx_test.data = (123456789);
+
+    sha1_hmac(KEY,strlen(KEY),(uint8_t *)&hx_test.data,sizeof(hx_test.data),hx_test.checksum);
 
     while (1) {
         evt_le_meta_event *meta;
@@ -273,19 +284,49 @@ int print_advertising_devices(int dd, uint8_t filter_type,uint8_t scan_flag)
         info = (le_advertising_info *) (meta->data + 1);
         if (check_report_filter(filter_type, info)) {
   //          mydata = (MYDATA *)(info->data);
-            hx_report = (HX_REPORT *)(info->data);
-            if(hx_report->indicator == INDICATOR_HX_REPORT)
+  //          hx_report = (HX_REPORT *)(info->data);
+
+/*
+            HX_REPORT hx_test;
+            hx_test.indicator=INDICATOR_HX_REPORT;
+            hx_test.data = 123;
+            sha1_hmac(KEY,strlen(KEY),(uint8_t *)&hx_test.data,sizeof(hx_test.data),hx_test.checksum);
+*/
+            hx_report = &hx_test;
+            if(hx_report->indicator == INDICATOR_HX_REPORT && first ==1)
             {
-                uint8_t digest[20];
-                sha1_hmac(KEY,strlen(KEY),(uint8_t *)hx_report->data,8,digest);
-                if(memcmp(digest,hx_report->checksum,sizeof(digest)) == 0)
+                first =0;
+                uint8_t digest[CHECKSUM_LENGTH];
+                sha1_hmac(KEY,strlen(KEY),(uint8_t *)&hx_report->data,8,digest);
+                if(memcmp(digest,hx_report->checksum,CHECKSUM_LENGTH) == 0 )
                 {
-                    printf("found a hx report\n");
+//                    printf("found a hx report\n");
+                    // info server
+                    if(! find_user(hx_report->data))
+                    {
+                        //report data to tongrenbao server,if the result is 0,then set data(device_id) to user array
+                        if(!info_server(hx_report->data,get_routerId()))
+                        {
+                            //syslog(LOG_INFO,"add a user to user array\n");
+                            printf("add a user to user array\n");
+                        }
+                    }
+
                 }
             }
             else
             {
-                printf("found BLE package\n");
+                uint8_t my_mac[8]={0xBB,0xBB,0x00,0xBB,0x0B,0x00};
+                if(memcmp(info->bdaddr.b,my_mac,6) == 0)
+                {
+                    uint8_t index = 0;
+                    printf("%lu",time(NULL));
+                    for(index=0;index<info->length;index++)
+                    {
+                        printf("%02X",info->data[index]);
+                    }
+                    printf("\n");
+                }
             }
 /*
             if(scan_flag == CENTRAL)
